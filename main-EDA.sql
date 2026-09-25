@@ -79,3 +79,39 @@ SELECT
     SUM(total_off) OVER (ORDER BY month_) AS rolling_total
 FROM Rolling_Total;
 
+-- View by company and year
+SELECT
+    company,
+    YEAR(`date`),
+    SUM(total_laid_off)
+FROM layoffs_cleaned
+GROUP BY
+    company,
+    YEAR(`date`)
+ORDER BY 3 DESC;
+
+-- CTE to view ranking of top companies laying off for all years
+WITH Company_Year (company, years, total_laid) AS (
+    SELECT
+        company,
+        YEAR(`date`),
+        SUM(total_laid_off)
+    FROM layoffs_cleaned
+    GROUP BY
+        company,
+        YEAR(`date`)
+    ORDER BY 3 DESC
+),
+Company_Year_Rank AS (
+    SELECT
+        *,
+        DENSE_RANK() OVER (
+            PARTITION BY years
+            ORDER BY total_laid DESC
+        ) AS ranking
+    FROM Company_Year
+    WHERE years IS NOT NULL
+)
+SELECT *
+FROM Company_Year_Rank
+WHERE ranking <= 5;
