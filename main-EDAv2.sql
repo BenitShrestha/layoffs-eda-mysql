@@ -1,4 +1,4 @@
--- OBJECTIVE #1: Calculate NULL rate across all columns
+-- OBJECTIVE #1: NULL RATE ACROSS ALL COLUMNS
 	-- COUNT(*) means Total no. of rows
 	-- COUNT(column) means Total no. of non-null rows
 
@@ -39,7 +39,7 @@ SELECT
     SUM(CASE WHEN total_laid_off IS NOT NULL AND percentage_laid_off IS NULL THEN 1 ELSE 0 END) AS total_not_percent_null
 FROM layoffs_cleaned;
 
--- OBJECTIVE #2: Bucket companies into layoff-severity tiers
+-- OBJECTIVE #2: BUCKET COMPANIES INTO LAYOFF-TIERS
 WITH Distinct_Company AS (
     SELECT
         company,
@@ -182,3 +182,112 @@ FROM (
     GROUP BY layoff_tier, tier_sort
 ) AS Tiered
 ORDER BY tier_sort;
+
+-- OBJECTIVE #3: RANK COMPANIES BY TOTAL LAID OFF (RANK, DENSE RANK, ROW NUMBER)
+WITH Company_Totals (company, yr, total_laid_off) AS
+(
+	SELECT 
+		company,
+        YEAR(`date`),
+        SUM(total_laid_off)
+	FROM layoffs_cleaned
+    GROUP BY 
+		company, 
+        YEAR(`date`)
+),
+Company_Rank AS
+(
+	SELECT 
+		*,
+		RANK() OVER(
+			PARTITION BY yr 
+			ORDER BY total_laid_off DESC
+		) AS ranking,
+		DENSE_RANK() OVER(
+			PARTITION BY yr 
+			ORDER BY total_laid_off DESC
+		) AS dense_ranking,
+		ROW_NUMBER() OVER(
+			PARTITION BY yr 
+			ORDER BY total_laid_off DESC
+		) AS row_numbers
+	FROM Company_Totals
+)
+SELECT *
+FROM Company_Rank;
+
+-- OBJECTIVE #4: REFINED ROLLING TOTAL
+-- Volume excluded by removing NULLs
+SELECT
+    SUM(total_laid_off) AS null_total
+FROM layoffs_cleaned
+WHERE `date` IS NULL;
+
+-- NULL ratio
+SELECT
+    SUM(total_laid_off) AS null_total
+FROM layoffs_cleaned
+WHERE `date` IS NULL;
+WITH Date_Null (date_nulls, date_totals, not_null_dates) AS
+(
+	SELECT 
+		SUM(CASE
+				WHEN `date` IS NULL THEN 1 ELSE 0 
+			END
+		),
+        COUNT(*),
+        COUNT(`date`)
+	FROM layoffs_cleaned
+)
+SELECT (date_nulls / date_totals) AS null_ratio
+FROM Date_Null;
+
+-- Using frame clause
+WITH monthly_totals AS (
+    SELECT
+        SUBSTRING(`date`, 1, 7) AS month_,
+        SUM(total_laid_off) AS total_off
+    FROM layoffs_cleaned
+    WHERE `date` IS NOT NULL
+    GROUP BY month_
+)
+SELECT
+    month_,
+    total_off,
+    SUM(total_off) OVER (
+        ORDER BY month_
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS rolling_total
+FROM monthly_totals
+ORDER BY month_;
+
+-- OBJECTIVE #5: MONTH OVER MONTH % CHANGE
+WITH monthly_totals AS (
+    SELECT
+        SUBSTRING(`date`, 1, 7) AS month_,
+        SUM(total_laid_off) AS total_off
+    FROM layoffs_cleaned
+    WHERE `date` IS NOT NULL
+    GROUP BY month_
+),
+prev_monthly AS (
+    SELECT
+        *,
+        LAG(total_off) OVER (
+            ORDER BY month_
+        ) AS prev_total_off
+    FROM monthly_totals
+)
+SELECT
+    *,
+    CASE
+        WHEN prev_total_off IS NOT NULL
+             AND prev_total_off != 0
+        THEN round(((total_off - prev_total_off) / prev_total_off) * 100, 2)
+    END AS `percent_change(%)`
+FROM prev_monthly;
+
+
+
+
+
