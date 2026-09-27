@@ -353,3 +353,48 @@ LEFT JOIN (
 WHERE b.industry IS NULL;
 
 -- OBJECTIVE #8: FUNDING VS LAYOFF SEVERITY
+SELECT
+    CASE
+        WHEN funds_raised_millions BETWEEN 0 AND 39999
+            THEN '0-40000'
+        WHEN funds_raised_millions BETWEEN 40000 AND 79999
+            THEN '40000-80000'
+        WHEN funds_raised_millions BETWEEN 80000 AND 119999
+            THEN '80000-120000'
+        WHEN funds_raised_millions >= 120000
+            THEN '120000+'
+        WHEN funds_raised_millions IS NULL
+            THEN 'null_values'
+    END AS funds_bucket,
+    AVG(percentage_laid_off) AS avg_percent_laid_off
+FROM layoffs_cleaned
+GROUP BY funds_bucket
+ORDER BY MIN(funds_raised_millions);
+
+-- OBJECTIVE #9: Company lifecycle CTE chain
+with Layoff_Dates (company, first_date, last_date) as
+(
+	select
+		company, 
+		min(`date`),
+		max(`date`)
+	from layoffs_cleaned
+    group by company
+),
+Total_Laid_Window as
+(
+	select 
+		ld.*,
+        sum(lc.total_laid_off) as sum_total_laid_off
+	from Layoff_Dates ld
+    join layoffs_cleaned lc
+    on ld.company = lc.company
+    group by ld.company
+)
+select 
+	*,
+	datediff(last_date, first_date) as days_between
+from Total_Laid_Window
+order by days_between;
+
+-- OBJECTIVE #10: PARTITIONED MOVING AVERAGE
