@@ -287,7 +287,57 @@ SELECT
     END AS `percent_change(%)`
 FROM prev_monthly;
 
+-- OBJECTIVE #6: CORRELATED SUBQUERY
+
+-- Row average above company's own average
+
+-- Using correlated subquery
+SELECT
+    a.*,
+    (
+        SELECT AVG(b.total_laid_off)
+        FROM layoffs_cleaned AS b
+        WHERE b.company = a.company
+    ) AS company_average
+FROM layoffs_cleaned AS a
+WHERE a.total_laid_off > (
+    SELECT AVG(b.total_laid_off)
+    FROM layoffs_cleaned AS b
+    WHERE b.company = a.company
+);
+
+--  Using a window function
+WITH Company_Average AS (
+    SELECT
+        *,
+        AVG(total_laid_off) OVER (PARTITION BY company) AS company_avg
+    FROM layoffs_cleaned
+)
+SELECT *
+FROM Company_Average
+WHERE total_laid_off > company_avg;
+
+-- OBJECTIVE #7: INDUSTRY COMPARISON (2022 v. 2023)
+WITH industry_22_23 AS (
+    SELECT
+        industry,
+		SUM(CASE WHEN YEAR(`date`) = 2022 THEN total_laid_off END) AS sum_in_22,        
+		SUM(CASE WHEN YEAR(`date`) = 2023 THEN total_laid_off END) AS sum_in_23,        
+        COUNT(CASE WHEN YEAR(`date`) = 2022 THEN 1 END) AS count_in_22, 
+        COUNT(CASE WHEN YEAR(`date`) = 2023 THEN 1 END) AS count_in_23  
+    FROM layoffs_cleaned
+    GROUP BY industry
+)
+SELECT
+    industry,
+    CASE
+        WHEN (count_in_22 > 0 AND count_in_23 = 0) THEN 'Yes' 
+        ELSE 'No'
+    END AS in22_not23
+FROM industry_22_23
+ORDER BY in22_not23;
 
 
 
+-- OBJECTIVE #8: FUNDING VS LAYOFF SEVERITY
 
