@@ -337,7 +337,19 @@ SELECT
 FROM industry_22_23
 ORDER BY in22_not23;
 
-
+-- Alternative way: Using JOIN
+SELECT *
+FROM (
+    SELECT DISTINCT industry
+    FROM layoffs_cleaned
+    WHERE YEAR(`date`) = 2022
+) AS a
+LEFT JOIN (
+    SELECT DISTINCT industry
+    FROM layoffs_cleaned
+    WHERE YEAR(`date`) = 2023
+) AS b
+    ON a.industry = b.industry
+WHERE b.industry IS NULL;
 
 -- OBJECTIVE #8: FUNDING VS LAYOFF SEVERITY
-
