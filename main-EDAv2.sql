@@ -372,29 +372,53 @@ GROUP BY funds_bucket
 ORDER BY MIN(funds_raised_millions);
 
 -- OBJECTIVE #9: Company lifecycle CTE chain
-with Layoff_Dates (company, first_date, last_date) as
-(
-	select
-		company, 
-		min(`date`),
-		max(`date`)
-	from layoffs_cleaned
-    group by company
+WITH Layoff_Dates (company, first_date, last_date) AS (
+    SELECT
+        company,
+        MIN(`date`),
+        MAX(`date`)
+    FROM layoffs_cleaned
+    GROUP BY company
 ),
-Total_Laid_Window as
-(
-	select 
-		ld.*,
-        sum(lc.total_laid_off) as sum_total_laid_off
-	from Layoff_Dates ld
-    join layoffs_cleaned lc
-    on ld.company = lc.company
-    group by ld.company
+Total_Laid_Window AS (
+    SELECT
+        ld.*,
+        SUM(lc.total_laid_off) AS sum_total_laid_off
+    FROM Layoff_Dates AS ld
+    JOIN layoffs_cleaned AS lc
+        ON ld.company = lc.company
+    GROUP BY ld.company
 )
-select 
-	*,
-	datediff(last_date, first_date) as days_between
-from Total_Laid_Window
-order by days_between;
+SELECT
+    *,
+    DATEDIFF(last_date, first_date) AS days_between
+FROM Total_Laid_Window
+ORDER BY days_between;
 
 -- OBJECTIVE #10: PARTITIONED MOVING AVERAGE
+with Monthly_Layoff as
+(
+	select 
+		industry, 
+		substring(`date`,1,7) as month_,
+		sum(total_laid_off) as sum_total
+	from layoffs_cleaned
+    where total_laid_off is not null
+    group by industry, month_
+    order by industry, month_
+)
+select 
+	industry, 
+    month_,
+    round(avg(sum_total) over(
+		partition by industry
+        order by month_
+        rows between 2 preceding and current row
+    ), 1) as trimonthly_average
+from Monthly_Layoff;
+
+-- Alternative: Populating missing months
+
+
+
+
