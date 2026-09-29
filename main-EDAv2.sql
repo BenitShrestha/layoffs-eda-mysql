@@ -1,4 +1,4 @@
--- OBJECTIVE #1: NULL RATE ACROSS ALL COLUMNS
+-- OBJECTIVE #1: Null rate across all columns
 	-- COUNT(*) means Total no. of rows
 	-- COUNT(column) means Total no. of non-null rows
 
@@ -39,7 +39,8 @@ SELECT
     SUM(CASE WHEN total_laid_off IS NOT NULL AND percentage_laid_off IS NULL THEN 1 ELSE 0 END) AS total_not_percent_null
 FROM layoffs_cleaned;
 
--- OBJECTIVE #2: BUCKET COMPANIES INTO LAYOFF-TIERS
+
+-- OBJECTIVE #2: Bucket companies into layoff-tiers
 WITH Distinct_Company AS (
     SELECT
         company,
@@ -183,7 +184,8 @@ FROM (
 ) AS Tiered
 ORDER BY tier_sort;
 
--- OBJECTIVE #3: RANK COMPANIES BY TOTAL LAID OFF (RANK, DENSE RANK, ROW NUMBER)
+
+-- OBJECTIVE #3: Rank companies by total laid off (rank, dense rank, row number)
 WITH Company_Totals (company, yr, total_laid_off) AS
 (
 	SELECT 
@@ -216,7 +218,8 @@ Company_Rank AS
 SELECT *
 FROM Company_Rank;
 
--- OBJECTIVE #4: REFINED ROLLING TOTAL
+
+-- OBJECTIVE #4: Refined Rolling Total
 -- Volume excluded by removing NULLs
 SELECT
     SUM(total_laid_off) AS null_total
@@ -261,7 +264,8 @@ SELECT
 FROM monthly_totals
 ORDER BY month_;
 
--- OBJECTIVE #5: MONTH OVER MONTH % CHANGE
+
+-- OBJECTIVE #5: Month over month % change
 WITH monthly_totals AS (
     SELECT
         SUBSTRING(`date`, 1, 7) AS month_,
@@ -287,7 +291,8 @@ SELECT
     END AS `percent_change(%)`
 FROM prev_monthly;
 
--- OBJECTIVE #6: CORRELATED SUBQUERY
+
+-- OBJECTIVE #6: Correlated Subquery
 
 -- Row average above company's own average
 
@@ -317,7 +322,8 @@ SELECT *
 FROM Company_Average
 WHERE total_laid_off > company_avg;
 
--- OBJECTIVE #7: INDUSTRY COMPARISON (2022 v. 2023)
+
+-- OBJECTIVE #7: Industry Comparison (2022 v. 2023)
 WITH industry_22_23 AS (
     SELECT
         industry,
@@ -352,7 +358,8 @@ LEFT JOIN (
     ON a.industry = b.industry
 WHERE b.industry IS NULL;
 
--- OBJECTIVE #8: FUNDING VS LAYOFF SEVERITY
+
+-- OBJECTIVE #8: Funding vs layoff severity
 SELECT
     CASE
         WHEN funds_raised_millions BETWEEN 0 AND 39999
@@ -370,6 +377,7 @@ SELECT
 FROM layoffs_cleaned
 GROUP BY funds_bucket
 ORDER BY MIN(funds_raised_millions);
+
 
 -- OBJECTIVE #9: Company lifecycle CTE chain
 WITH Layoff_Dates (company, first_date, last_date) AS (
@@ -395,7 +403,8 @@ SELECT
 FROM Total_Laid_Window
 ORDER BY days_between;
 
--- OBJECTIVE #10: PARTITIONED MOVING AVERAGE
+
+-- OBJECTIVE #10: Partitioned moving average
 WITH Monthly_Layoff AS (
     SELECT
         industry,
@@ -421,53 +430,57 @@ FROM Monthly_Layoff;
 
 -- Alternative: Populating missing months
 WITH RECURSIVE month_spine AS (
-    SELECT DATE_FORMAT(MIN(`date`), '%Y-%m-01') AS month_
+    SELECT
+        DATE_FORMAT(MIN(`date`), '%Y-%m-01') AS month_
     FROM layoffs_cleaned
 
     UNION ALL
 
-    SELECT DATE_ADD(month_, INTERVAL 1 MONTH)
+    SELECT
+        DATE_ADD(month_, INTERVAL 1 MONTH)
     FROM month_spine
-    WHERE month_ < (SELECT DATE_FORMAT(MAX(`date`), '%Y-%m-01') FROM layoffs_cleaned)
-), 
-Industry_List as
-(
-	select distinct industry
-    from layoffs_cleaned
-    where industry is not null
+    WHERE month_ < (
+        SELECT DATE_FORMAT(MAX(`date`), '%Y-%m-01')
+        FROM layoffs_cleaned
+    )
 ),
-Industry_Month_Grid as 
-(
-	select 
-		i.industry, 
+Industry_List AS (
+    SELECT DISTINCT
+        industry
+    FROM layoffs_cleaned
+    WHERE industry IS NOT NULL
+),
+Industry_Month_Grid AS (
+    SELECT
+        i.industry,
         m.month_
-	from Industry_List i
-    cross join Month_Spine m
+    FROM Industry_List AS i
+    CROSS JOIN month_spine AS m
 ),
-Real_Data as
-(
-	select
-		industry,
-        date_format(`date`, '%Y-%m-01') as month_, 
-        sum(total_laid_off) as total_off
-	from layoffs_cleaned
-    where industry is not null
-    group by industry, date_format(`date`, '%Y-%m-01')
+Real_Data AS (
+    SELECT
+        industry,
+        DATE_FORMAT(`date`, '%Y-%m-01') AS month_,
+        SUM(total_laid_off) AS total_off
+    FROM layoffs_cleaned
+    WHERE industry IS NOT NULL
+    GROUP BY
+        industry,
+        DATE_FORMAT(`date`, '%Y-%m-01')
 ),
-Gap_Filled as
-(
-	select
-		 g.industry, 
-		 g.month_,
-		 coalesce(r.total_off, 0) as total_off
-	from Industry_Month_Grid g
-    LEFT JOIN Real_Data r
-		on g.industry = r.industry
-        and g.month_ = r.month_
+Gap_Filled AS (
+    SELECT
+        g.industry,
+        g.month_,
+        COALESCE(r.total_off, 0) AS total_off
+    FROM Industry_Month_Grid AS g
+    LEFT JOIN Real_Data AS r
+        ON g.industry = r.industry
+        AND g.month_ = r.month_
 )
 SELECT
     industry,
-    substring(month_,1,7) as `year-month`,
+    DATE_FORMAT(month_, '%Y-%m') AS `year-month`,
     ROUND(
         AVG(total_off) OVER (
             PARTITION BY industry
@@ -478,5 +491,36 @@ SELECT
     ) AS trimonthly_average
 FROM Gap_Filled;
 
+
+-- OBJECTIVE #11: Percentile/NTILE
+WITH Company_Totals AS (
+    SELECT
+        company,
+        SUM(total_laid_off) AS sum_laid_off,
+        funds_raised_millions
+    FROM layoffs_cleaned
+    GROUP BY
+        company,
+        funds_raised_millions
+),
+Company_Quartile AS (
+    SELECT
+        company,
+        sum_laid_off,
+        funds_raised_millions,
+        NTILE(4) OVER (
+            ORDER BY sum_laid_off
+        ) AS laid_off_quartile
+    FROM Company_Totals
+)
+SELECT
+    ROUND(AVG(funds_raised_millions), 1) AS avg_funds_raised_millions,
+    laid_off_quartile
+FROM Company_Quartile
+GROUP BY laid_off_quartile
+ORDER BY laid_off_quartile;
+
+-- Better view
+	-- MIN(sum_laid_off) AS min_layoffs, MAX(sum_laid_off) AS max_layoffs, 
 
 
