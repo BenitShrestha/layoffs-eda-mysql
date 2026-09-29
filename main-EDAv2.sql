@@ -396,29 +396,46 @@ FROM Total_Laid_Window
 ORDER BY days_between;
 
 -- OBJECTIVE #10: PARTITIONED MOVING AVERAGE
-with Monthly_Layoff as
-(
-	select 
-		industry, 
-		substring(`date`,1,7) as month_,
-		sum(total_laid_off) as sum_total
-	from layoffs_cleaned
-    where total_laid_off is not null
-    group by industry, month_
-    order by industry, month_
+WITH Monthly_Layoff AS (
+    SELECT
+        industry,
+        SUBSTRING(`date`, 1, 7) AS month_,
+        SUM(total_laid_off) AS sum_total
+    FROM layoffs_cleaned
+    WHERE total_laid_off IS NOT NULL
+    GROUP BY industry, month_
+    ORDER BY industry, month_
 )
-select 
-	industry, 
+SELECT
+    industry,
     month_,
-    round(avg(sum_total) over(
-		partition by industry
-        order by month_
-        rows between 2 preceding and current row
-    ), 1) as trimonthly_average
-from Monthly_Layoff;
+    ROUND(
+        AVG(sum_total) OVER (
+            PARTITION BY industry
+            ORDER BY month_
+            ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+        ),
+        1
+    ) AS trimonthly_average
+FROM Monthly_Layoff;
 
 -- Alternative: Populating missing months
+WITH RECURSIVE month_spine AS (
+    SELECT DATE_FORMAT(MIN(`date`), '%Y-%m-01') AS month_
+    FROM layoffs_cleaned
 
+    UNION ALL
 
-
+    SELECT DATE_ADD(month_, INTERVAL 1 MONTH)
+    FROM month_spine
+    WHERE month_ < (SELECT DATE_FORMAT(MAX(`date`), '%Y-%m-01') FROM layoffs_cleaned)
+), 
+Industry_List as
+(
+	select distinct industry
+    from layoffs_cleaned
+    where industry is not null
+)
+select *
+from Industry_List;
 
