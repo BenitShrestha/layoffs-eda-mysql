@@ -435,7 +435,48 @@ Industry_List as
 	select distinct industry
     from layoffs_cleaned
     where industry is not null
+),
+Industry_Month_Grid as 
+(
+	select 
+		i.industry, 
+        m.month_
+	from Industry_List i
+    cross join Month_Spine m
+),
+Real_Data as
+(
+	select
+		industry,
+        date_format(`date`, '%Y-%m-01') as month_, 
+        sum(total_laid_off) as total_off
+	from layoffs_cleaned
+    where industry is not null
+    group by industry, date_format(`date`, '%Y-%m-01')
+),
+Gap_Filled as
+(
+	select
+		 g.industry, 
+		 g.month_,
+		 coalesce(r.total_off, 0) as total_off
+	from Industry_Month_Grid g
+    LEFT JOIN Real_Data r
+		on g.industry = r.industry
+        and g.month_ = r.month_
 )
-select *
-from Industry_List;
+SELECT
+    industry,
+    substring(month_,1,7) as `year-month`,
+    ROUND(
+        AVG(total_off) OVER (
+            PARTITION BY industry
+            ORDER BY month_
+            ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+        ),
+        1
+    ) AS trimonthly_average
+FROM Gap_Filled;
+
+
 
