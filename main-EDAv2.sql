@@ -524,3 +524,26 @@ ORDER BY laid_off_quartile;
 	-- MIN(sum_laid_off) AS min_layoffs, MAX(sum_laid_off) AS max_layoffs, 
 
 
+-- OBJECTIVE #12: Cumulative distinct industries
+WITH month_industry AS (
+    SELECT DISTINCT
+        DATE_FORMAT(`date`, '%Y-%m') AS month_,
+        industry
+    FROM layoffs_cleaned
+    WHERE total_laid_off > 0
+    ORDER BY month_
+),
+months AS (
+    SELECT DISTINCT
+        month_
+    FROM month_industry
+)
+SELECT
+    m.month_,
+    (
+        SELECT COUNT(DISTINCT industry)
+        FROM month_industry AS inner_
+        WHERE inner_.month_ <= m.month_
+    ) AS distinct_industries_so_far
+FROM months AS m
+ORDER BY m.month_;
