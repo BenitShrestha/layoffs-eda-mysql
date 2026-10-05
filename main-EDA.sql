@@ -1,8 +1,11 @@
--- Exploratory Data Analysis
+-- EXPLORATORY DATA ANALYSIS
+
+-- Quick preview of the full cleaned dataset
 SELECT *
 FROM layoffs_cleaned;
 
 -- Focusing on `total_laid_off` and `percentage_laid_off`
+-- Sanity-check the upper bounds of each metric
 SELECT
 	MAX(total_laid_off) max_total,
     MAX(percentage_laid_off) max_percentage
@@ -35,11 +38,13 @@ FROM layoffs_cleaned
 GROUP BY country
 ORDER BY 2 DESC;
 
+-- Date range covered by the dataset
 SELECT 
 	MIN(`date`), 
     MAX(`date`)
 FROM layoffs_cleaned;
 
+-- View total laid off per year
 SELECT DISTINCT
     YEAR(`date`),
     SUM(total_laid_off)
@@ -47,6 +52,7 @@ FROM layoffs_cleaned
 GROUP BY YEAR(`date`)
 ORDER BY 1 DESC;
 
+-- View total laid off per company stage (e.g. Seed, Series B, Post-IPO)
 SELECT
     stage,
     SUM(total_laid_off)
@@ -76,6 +82,7 @@ WITH Rolling_Total AS (
 SELECT
     month_,
     total_off,
+	-- No frame clause: defaults to RANGE UNBOUNDED PRECEDING, giving a running sum
     SUM(total_off) OVER (ORDER BY month_) AS rolling_total
 FROM Rolling_Total;
 
@@ -105,6 +112,7 @@ WITH Company_Year (company, years, total_laid) AS (
 Company_Year_Rank AS (
     SELECT
         *,
+		-- DENSE_RANK (not RANK) so tied totals don't skip rank numbers
         DENSE_RANK() OVER (
             PARTITION BY years
             ORDER BY total_laid DESC
@@ -112,6 +120,7 @@ Company_Year_Rank AS (
     FROM Company_Year
     WHERE years IS NOT NULL
 )
+-- Top 5 companies by layoffs, per year
 SELECT *
 FROM Company_Year_Rank
 WHERE ranking <= 5;
