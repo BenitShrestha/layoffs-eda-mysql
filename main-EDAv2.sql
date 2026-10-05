@@ -186,6 +186,7 @@ ORDER BY tier_sort;
 
 
 -- OBJECTIVE #3: Rank companies by total laid off (rank, dense rank, row number)
+-- Compares RANK, DENSE_RANK, and ROW_NUMBER side by side for the same ordering
 WITH Company_Totals (company, yr, total_laid_off) AS
 (
 	SELECT 
@@ -231,6 +232,7 @@ SELECT
     SUM(total_laid_off) AS null_total
 FROM layoffs_cleaned
 WHERE `date` IS NULL;
+-- Share of rows missing a `date` value
 WITH Date_Null (date_nulls, date_totals, not_null_dates) AS
 (
 	SELECT 
@@ -245,7 +247,7 @@ WITH Date_Null (date_nulls, date_totals, not_null_dates) AS
 SELECT (date_nulls / date_totals) AS null_ratio
 FROM Date_Null;
 
--- Using frame clause
+-- Using frame clause (explicit ROWS frame, equivalent to the default RANGE frame used earlier)
 WITH monthly_totals AS (
     SELECT
         SUBSTRING(`date`, 1, 7) AS month_,
@@ -380,6 +382,7 @@ ORDER BY MIN(funds_raised_millions);
 
 
 -- OBJECTIVE #9: Company lifecycle CTE chain
+-- How long (in days) each company's layoffs were spread out, chained across CTEs
 WITH Layoff_Dates (company, first_date, last_date) AS (
     SELECT
         company,
@@ -405,6 +408,7 @@ ORDER BY days_between;
 
 
 -- OBJECTIVE #10: Partitioned moving average
+-- 3-month moving average per industry; months with no layoffs are simply absent
 WITH Monthly_Layoff AS (
     SELECT
         industry,
@@ -429,6 +433,7 @@ SELECT
 FROM Monthly_Layoff;
 
 -- Alternative: Populating missing months
+-- Recursive CTE builds a full month spine so gaps become explicit 0s instead of missing rows
 WITH RECURSIVE month_spine AS (
     SELECT
         DATE_FORMAT(MIN(`date`), '%Y-%m-01') AS month_
@@ -525,6 +530,7 @@ ORDER BY laid_off_quartile;
 
 
 -- OBJECTIVE #12: Cumulative distinct industries
+-- Running count, via correlated subquery, of distinct industries affected up to each month
 WITH month_industry AS (
     SELECT DISTINCT
         DATE_FORMAT(`date`, '%Y-%m') AS month_,
